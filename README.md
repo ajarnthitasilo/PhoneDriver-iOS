@@ -1,188 +1,107 @@
-# Phone Driver
+# PhoneDriver-iOS
 
-A Python-based mobile automation agent that uses Qwen3-VL vision-language models to understand and interact with Android devices through visual analysis and ADB commands.
+Fork of [OminousIndustries/PhoneDriver](https://github.com/OminousIndustries/PhoneDriver) adapted for **physical iPhones** via **WebDriverAgent (WDA)** instead of Android ADB.
 
-<p align="center">
-  <img src="Images/PhoneDriver.png" width="600" alt="Phone Driver Demo">
-</p>
+Same Gradio **Phone Agent Control Panel**: natural-language task → vision model decides taps → device executes.
 
-## Features
-
-- 🤖 **Vision-powered automation**: Uses Qwen3-VL to visually understand phone screens
-- 📱 **ADB integration**: Controls Android devices via ADB commands
-- 🎯 **Natural language tasks**: Describe what you want in plain English
-- 🖥️ **Web UI**: Built-in Gradio interface for easy control
-- 📊 **Real-time feedback**: Live screenshots and execution logs
+| Layer | Upstream (Android) | This fork (iPhone) |
+|-------|--------------------|--------------------|
+| Screen / input | ADB | WebDriverAgent HTTP (`:8100`) |
+| Vision / planning | Qwen3-VL | Qwen3-VL (unchanged) |
+| UI | Gradio `ui.py` | Gradio `ui.py` (WDA settings) |
 
 ## Requirements
 
-- Python 3.10+
-- Android device with USB debugging & Developer Mode enabled
-- ADB (Android Debug Bridge) installed
-- GPU with sufficient VRAM (Tested on 24gb GPU with Qwen3-VL-8B Model)
-- The Repo is set to use the Dense Qwen3-VL 4B/8B Model which performs very well. To swap to an MoE model, see the configuration section below 
+- macOS with **Xcode**
+- Physical **iPhone**, Developer Mode on, Trusted to this Mac
+- **WebDriverAgent** built & running on the device (Apple Developer signing)
+- Python **3.10+**
+- GPU VRAM enough for Qwen3-VL (4B/8B recommended; 30B needs a large card)
+- Optional but recommended: [`pymobiledevice3`](https://github.com/doronz88/pymobiledevice3) for USB tunnel / port forward
 
-## Installation
+## 1. WebDriverAgent on the iPhone
 
-### 1. Install ADB
+1. Clone / open [WebDriverAgent](https://github.com/appium/WebDriverAgent) (or Appium’s WDA) in Xcode.
+2. Set your Team signing for `WebDriverAgentRunner`.
+3. Run the test / runner on the connected iPhone (`Product → Test` or Appium docs flow).
+4. Keep WDA alive on the device (status endpoint must answer).
 
-**Linux/Ubuntu:**
-```bash
-sudo apt update
-sudo apt install adb
-```
-### 2. Clone Repo & Install Python Dependencies
-
-```bash
-git clone https://github.com/OminousIndustries/PhoneDriver.git
-cd PhoneDriver
-```
-Create a Virtual Enviornment
+### Port forward (USB)
 
 ```bash
-python -m venv phonedriver
-source phonedriver/bin/activate
+# iOS 17+ — start tunnel once (needs sudo)
+sudo pymobiledevice3 remote start-tunnel
+
+# Forward WDA port to the Mac
+pymobiledevice3 usbmux forward 8100 8100
 ```
-Install Python Deps
+
+Check:
 
 ```bash
-pip install git+https://github.com/huggingface/transformers
-# pip install transformers==4.57.0 # currently, V4.57.0 is not released
-
-# Install other requirements
-pip install pillow gradio qwen_vl_utils requests
+./scripts/check_wda.sh
+# or
+curl -s http://127.0.0.1:8100/status | python3 -m json.tool
 ```
 
-### 3. Connect Your Device
-
-1. Enable USB debugging on your Android device (Settings → Developer Options)
-2. Connect via USB
-3. Verify connection:
-```bash
-adb devices
-```
-You should see your device listed.
-
-## Configuration
-
-### Model Selection
-
-Edit `qwen_vl_agent.py` to choose your model:
-
-```python
-# For 4B model
-model_name: str = "Qwen/Qwen3-VL-4B-Instruct"
-
-# For 8B model 
-#model_name: str = "Qwen/Qwen3-VL-8B-Instruct"
-```
-
-### If you want to try a Qwen3 MoE model, you need to change the import in `qwen_vl_agent.py` to the following:
-
-```python
-#from transformers import Qwen3VLForConditionalGeneration, AutoProcessor  - Comment this import out, it is for the Dense models
-# Uncomment the import below for the MoE Variants!!!
-from transformers import Qwen3VLMoeForConditionalGeneration, AutoProcessor
-```
-
-You will also need to change line 61: 
-
-```python
-        self.model = Qwen3VLForConditionalGeneration.from_pretrained(
-```
-Change it to:
-
-```python
-        self.model = Qwen3VLMoeForConditionalGeneration.from_pretrained(
-```
-
-### Screen Resolution
-
-The agent can auto-detect your device resolution from the Web UI settings tab, but you can manually configure it in `config.json`.
-
-```json
-{
-  "screen_width": 1080,
-  "screen_height": 2340,
-  ...
-}
-```
-
-To get your device resolution, with the device connected to your computer type the following in the terminal: 
-```bash
-adb shell wm size
-```
-
-## Usage
-
-### Web UI (Recommended)
-
-Launch the Gradio interface:
+## 2. Install this project
 
 ```bash
+cd ~/PhoneDriver-iOS
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -U pip
+pip install -r requirements.txt
+# If transformers is too old for Qwen3-VL:
+# pip install git+https://github.com/huggingface/transformers
+```
+
+Edit `config.json` if needed (`wda_url`, `model_name`, screen size).
+
+## 3. Run
+
+Web UI (recommended):
+
+```bash
+source .venv/bin/activate
 python ui.py
 ```
 
-Navigate to `http://localhost:7860` and enter tasks like:
-- "Open Chrome"
-- "Search for weather in New York"
-- "Open Settings and enable WiFi"
+Open [http://localhost:7860](http://localhost:7860) → **Check WDA** → enter a task → **Start Task**.
 
-### Command Line
+CLI:
 
 ```bash
-python phone_agent.py "your task here"
+python phone_agent.py "Open Settings"
 ```
 
-Example:
-```bash
-python phone_agent.py "Open the camera app"
-```
+## Configuration
 
-## How It Works
+Key fields in `config.json`:
 
-1. **Screenshot Capture**: Takes a screenshot of the phone via ADB
-2. **Visual Analysis**: Qwen3-VL analyzes the screen to understand UI elements
-3. **Action Planning**: Determines the best action to take (tap, swipe, type, etc.)
-4. **Execution**: Sends ADB commands to perform the action
-5. **Repeat**: Continues until task is complete or max cycles reached
+| Key | Meaning |
+|-----|---------|
+| `wda_url` | WDA base URL (default `http://127.0.0.1:8100`) |
+| `bundle_id` | Optional app to launch when creating a WDA session |
+| `screen_width` / `screen_height` | WDA window size in **points** (auto-corrected on connect) |
+| `model_name` | Hugging Face id, e.g. `Qwen/Qwen3-VL-8B-Instruct` |
+| `step_delay` | Pause after each action (seconds) |
 
-## Configuration Options
+## How it works
 
-Key settings in `config.json`:
+1. Screenshot via WDA (`/session/.../screenshot`)
+2. Qwen3-VL returns a `mobile_use` tool call (tap / swipe / type / wait / terminate)
+3. Coordinates (0–999 space) → normalized → WDA points → `tap` / `dragFromToForDuration` / `keys`
+4. Repeat until terminate or max cycles
 
-- `temperature`: Model creativity (0.0-1.0, default: 0.1)
-- `max_tokens`: Max response length (default: 512)
-- `step_delay`: Wait time between actions in seconds (default: 1.5)
-- `max_retries`: Maximum retry attempts (default: 3)
-- `use_flash_attention`: Enable Flash Attention 2 for faster inference
+## Upstream attribution
 
-## Troubleshooting
+Original Android PhoneDriver: [OminousIndustries/PhoneDriver](https://github.com/OminousIndustries/PhoneDriver) (Apache-2.0).  
+This fork replaces the ADB device layer with `wda_client.py` and updates the UI/docs for iPhone.
 
-**Device not detected:**
-- Ensure USB debugging is enabled
-- Run `adb devices` to verify connection
-- Try `adb kill-server && adb start-server`
+## Limitations
 
-**Wrong tap locations:**
-- Auto-detect resolution in Settings tab of UI
-- Or manually verify with `adb shell wm size`
-
-**Model loading errors:**
-- Ensure you have sufficient VRAM
-- Try the 8B model for lower memory requirements
-- Check that transformers is installed from source
-
-**Out of memory:**
-- Use the 8B model instead of 30B
-- Reduce `max_tokens` in config
-- Close other applications using GPU memory
-
-## License
-
-Apache License 2.0 - see LICENSE file for details
-
-## Acknowledgments
-
-- Built with [Qwen3-VL](https://github.com/QwenLM/Qwen-VL) by Alibaba Cloud
-- Uses [Gradio](https://gradio.app/) for the web interface
+- WDA signing / rebuild is required after many iOS updates
+- System dialogs and some protected screens may be hard or impossible to automate
+- Vision model quality dominates success rate; use a VL model, not text-only OpenELM alone
+- Not a drop-in for jailbreak-only agents; this path is **non-jailbreak WDA**

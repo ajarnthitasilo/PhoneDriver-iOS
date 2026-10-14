@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+screenshots/
+*.log
+phone_agent_*.log
+.pip-cache/
+.idea/
+.vscode/
+*.gguf
+models/
